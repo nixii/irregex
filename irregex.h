@@ -1,250 +1,216 @@
 
-// embed dynamic arrays
-#ifndef DA_H
-#define DA_H
-
-#ifndef DA_START_CAPACITY
-#	define DA_START_CAPACITY 8
-#endif // DA_START_CAPACITY
-
-#ifndef DA_RESIZE_MULT
-#	define DA_RESIZE_MULT 2
-#endif // DA_RESIZE_MULT
-
-#define DA_HEADER(type)\
-typedef struct da_##type {\
-	size_t len;\
-	size_t capacity;\
-	type *data;\
-} da_##type;\
-\
-da_##type da_##type##_new();\
-void da_##type##_free(da_##type *da);\
-void da_##type##_resize(da_##type *da);\
-void da_##type##_append(da_##type *da, type v);
-
-#define DA_IMPLEMENTATION(type)\
-da_##type da_##type##_new()\
-{\
-	errno = 0;\
-\
-	type *data = (type*)malloc(sizeof(type) * DA_START_CAPACITY);\
-	if (data == NULL)\
-	{\
-		errno = 1;\
-		return (da_##type){\
-			.data = NULL,\
-			.len = 0,\
-			.capacity = 0\
-		};\
-	}\
-\
-	return (da_##type){\
-		.data = data,\
-		.len = 0,\
-		.capacity = 8\
-	};\
-}\
-\
-void da_##type##_free(da_##type *da)\
-{\
-	free(da->data);\
-	da->data = NULL;\
-	da->len = 0;\
-	da->capacity = 0;\
-}\
-\
-void da_##type##_resize(da_##type *da)\
-{\
-	errno = 0;\
-	if (da->capacity > da->len) return;\
-	if (da->capacity == 0)\
-	{\
-		errno = 2;\
-		return;\
-	}\
-\
-	type *d = (type*)realloc(da->data, sizeof(type) * da->capacity * DA_RESIZE_MULT);\
-	if (d == NULL)\
-	{\
-		errno = 1;\
-		return;\
-	}\
-\
-	da->data = d;\
-	da->capacity *= 2;\
-}\
-\
-void da_##type##_append(da_##type *da, type v)\
-{\
-	while (da->capacity <= da->len) {\
-		da_##type##_resize(da);\
-		if (errno == 2)\
-		{\
-			fprintf(stderr, "attempt to write to freed dynamic array\n");\
-			exit(1);\
-		} else if (errno != 0)\
-		{\
-			return;\
-		}\
-	}\
-\
-	da->data[da->len] = v;\
-	da->len += 1;\
-}
-
-#endif // DA_H
-
-
-
-// regex implementation
 #ifndef IRREGEX_H
 #define IRREGEX_H
 
-#include <stddef.h>
-
-// token types
-typedef enum irx_token_type {
-	IRX_TT_LITERAL,
-} irx_token_type;
-
-// a literal token value
-typedef struct irx_token_value_literal {
-	size_t start;
-	size_t len;
-} irx_token_value_literal;
-
-// token value
-typedef union irx_token_value {
-	irx_token_value_literal lit;
-} irx_token_value;
-
-// the final token type
-typedef struct irx_token {
-	irx_token_type type;
-	irx_token_value value;
-} irx_token;
-
-// the node types
-typedef enum irx_node_type {
-	IRX_NODE_LITERAL
-} irx_node_type;
-
-// values
-typedef struct irx_node_value_literal {
-	size_t start;
-	size_t end;
-} irx_node_value_literal;
-typedef union irx_node_value {
-	irx_node_value_literal lit;
-} irx_node_value;
-
-// create the node
-typedef struct irx_node {
-	irx_node_type type;
-	irx_node_value value;
-} irx_node;
-
-// create the dynamic array headers
-DA_HEADER(irx_token)
-DA_HEADER(irx_node)
-
-// tokenize the pattern
-da_irx_token irx_tokenize(const char *pattern);
-
-// parse the pattern into logic
-da_irx_node irx_parse(const da_irx_token *tokens);
-
-#endif // IRREGEX_H
-
-#ifdef IRREGEX_IMPLEMENTATION
-
-#include <stdio.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <errno.h>
 #include <string.h>
 
-// implement the dynamic arrays
-DA_IMPLEMENTATION(irx_token)
-DA_IMPLDA_IMPLEMENTATION(irx_node)
+// dynamic array implementation
+#define DA_INIT_CAPACITY 4
+#define DA_GROW_SCALE 2
+#define DA_HEADERS(type, name) \
+	typedef struct {\
+		type *data;\
+		size_t cap;\
+		size_t len;\
+	} name;\
+	name name##_new();\
+	void name##_append(name *da, type data);\
+	void name##_destroy(name *da);
 
-// tokenize a literal
-irx_token irx_tokenize_literal(const char *pattern, size_t len, size_t *pos)
+#define DA_IMPLEMENTATION(type, name)\
+	name name##_new() {\
+		type *data = (type*)malloc(sizeof(type) * DA_INIT_CAPACITY);\
+		name da = (name){\
+			.data = data,\
+			.cap = DA_INIT_CAPACITY,\
+			.len = 0\
+		};\
+		if (data == NULL)\
+			da.cap = 0;\
+		return da;\
+	}\
+	void name##_extend(name *da) {\
+		if (da->cap >= da->len + 1 || da->cap == 0) return;\
+		da->cap *= DA_GROW_SCALE;\
+		type *new_data = (type*)realloc(da->data, sizeof(type) * da->cap);\
+		if (new_data == NULL) {\
+			free(da->data);\
+			da->cap = 0;\
+		}\
+		da->data = new_data;\
+	}\
+	void name##_append(name *da, type data) {\
+		name##_extend(da);\
+		if (da->data == NULL)\
+			return;\
+		da->data[da->len] = data;\
+		da->len++;\
+	}\
+	void name##_destroy(name *da){\
+		free(da->data);\
+		da->cap = 0;\
+		da->data = NULL;\
+		da->len = 0;\
+	}
+
+// token type
+typedef enum {
+	IX_TT_LITERAL,
+	IX_TT_WILDCARD,
+	IX_TT_ERR
+} ix_token_type;
+
+// literal value
+typedef struct {
+	size_t start;
+	size_t len;
+} ix_tv_literal;
+
+// token val
+typedef union {
+	ix_tv_literal lit;
+} ix_token_val;
+
+// create a token
+typedef struct {
+	ix_token_type type;
+	ix_token_val val;
+} ix_token;
+
+// create dynamic arrays
+DA_HEADERS(ix_token, ix_tokens)
+
+// actually compile regex
+ix_token _ix_tokenize_literal(const char *input, size_t *pos, size_t len);
+ix_token _ix_tokenize_expr(const char *input, size_t *pos, size_t len);
+ix_tokens _ix_tokenize(const char *input);
+
+#endif // IRREGEX_H
+
+
+
+#ifdef IRREGEX_IMPLEMENTATION
+
+extern int errno;
+
+// define dynamic arrays
+DA_IMPLEMENTATION(ix_token, ix_tokens);
+
+// start parsing
+ix_token _ix_tokenize_literal(const char *input, size_t *pos, size_t len)
 {
 
-	// looping values
+	// loop through each char
 	size_t start = *pos;
-	size_t pattern_len = 0;
+	size_t length = 0;
 	
-	// the final token value
-	irx_token_value val;
-	
-	// for every character, get it to the string
 	while (*pos < len)
 	{
-		char c = pattern[*pos];
+		char c = input[*pos];
+		
 		switch (c)
 		{
-			case '?':
-				goto done;
-			default:
-				pattern_len += 1;
+		
+		// end if you find a new thing
+		case '\\':
+			(*pos)--;
+			goto complete;
+			
+		// add the next character
+		default:
+			length++;
+			break;
 		}
-		*pos += 1;
+		(*pos)++;
 	}
-	
-	// you are done
-done:
-	// create the value literal
-	val.lit = (irx_token_value_literal){
-		.start = start,
-		.len = pattern_len
-	};
-	
-	// return the literal token
-	return (irx_token){
-		.type = IRX_TT_LITERAL,
-		.value = val
+
+	// when it is done
+complete:
+	return (ix_token){
+		.type = IX_TT_LITERAL,
+		.val = (ix_tv_literal){
+			.start = start,
+			.len = length
+		}
 	};
 }
 
-// tokenize the pattern
-da_irx_token irx_tokenize(const char *pattern)
+ix_token _ix_tokenize_expr(const char *input, size_t *pos, size_t len)
 {
-
-	// create the dynamic array
-	da_irx_token da = da_irx_token_new();
-
-	// looping vars
-	size_t len = strlen(pattern);
-	size_t i = 0;
+	errno = 0;
 	
-	// loop through every single character
-	while (i < len)
+	// loop through all the operators
+	(*pos)++;
+	while (*pos < len)
 	{
-	
-		// detect the correct tokenization function
-		char c = pattern[i];
-		irx_token tok;
+		char c = input[*pos];
+		
 		switch (c)
 		{
-			case '?':
-				break;
-			default:
-				tok = irx_tokenize_literal(pattern, len, &i);
-				da_irx_token_append(&da, tok);
+		
+		// wildcard
+		case '*': // wildcard
+			return (ix_token){
+				.type = IX_TT_WILDCARD
+			};
+		
+		// invalid operator
+		default:
+			errno = 1;
+			return (ix_token){
+				.type = IX_TT_ERR
+			};
 		}
-	
-		i++;
+		
+		(*pos)++;
 	}
-
-	return da;
+	
+	// nothing was found
+	errno = 1;
+	return (ix_token){
+		.type = IX_TT_ERR
+	};
 }
 
-// parse text
-da_irx_node irx_parse(const da_irx_token *tokens)
+ix_tokens _ix_tokenize(const char *input)
 {
-	// TODO (create this)
+
+	// init the loop
+	ix_tokens tokens = ix_tokens_new();
+	size_t max_chars = strlen(input);
+	size_t idx = 0;
+	
+	// for each letter in the loop
+	while (idx < max_chars)
+	{
+		char c = input[idx];
+		switch (c)
+		{
+		
+		// use an expression
+		case '\\':
+			ix_tokens_append(&tokens, _ix_tokenize_expr(input, &idx, max_chars));
+			if (errno != 0)
+			{
+				ix_tokens_destroy(&tokens);
+				return tokens;
+			}
+			break;
+		
+		// use a literal
+		default:
+			ix_tokens_append(&tokens, _ix_tokenize_literal(input, &idx, max_chars));
+		}
+		idx++;
+	}
+	
+	// return the tokens
+	return tokens;
 }
+
+// 
 
 #endif // IRREGEX_IMPLEMENTATION
