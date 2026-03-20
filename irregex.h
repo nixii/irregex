@@ -85,8 +85,32 @@ typedef struct {
 	char *source;
 } irregex;
 
+// node types
+typedef enum {
+	IX_NT_LITERAL,
+	IX_NT_WILDCARD
+} ix_node_type;
+
+// literal node calc
+typedef struct {
+	size_t start;
+	size_t len;
+} ix_nt_literal;
+
+// node union
+typedef union {
+	ix_nt_literal lit;
+} ix_node_val;
+
+// node type
+typedef struct {
+	ix_node_type type;
+	ix_node_val val;
+} ix_node;
+
 // create dynamic arrays
 DA_HEADERS(ix_token, ix_tokens)
+DA_HEADERS(ix_node, ix_nodes)
 
 // actually compile regex
 
@@ -116,7 +140,8 @@ void irregex_destroy(irregex *irx);
 extern int errno;
 
 // define dynamic arrays
-DA_IMPLEMENTATION(ix_token, ix_tokens);
+DA_IMPLEMENTATION(ix_token, ix_tokens)
+DA_IMPLEMENTATION(ix_node, ix_nodes)
 
 // start parsing
 ix_token _ix_tokenize_literal(const char *input, size_t *pos, size_t len)
