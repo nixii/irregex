@@ -80,6 +80,11 @@ typedef struct {
 	ix_token_val val;
 } ix_token;
 
+// create an irregex view
+typedef struct {
+	char *source;
+} irregex;
+
 // create dynamic arrays
 DA_HEADERS(ix_token, ix_tokens)
 
@@ -87,6 +92,8 @@ DA_HEADERS(ix_token, ix_tokens)
 ix_token _ix_tokenize_literal(const char *input, size_t *pos, size_t len);
 ix_token _ix_tokenize_expr(const char *input, size_t *pos, size_t len);
 ix_tokens _ix_tokenize(const char *input);
+irregex irregex_from(const char *input);
+void irregex_destroy(irregex *irx);
 
 #endif // IRREGEX_H
 
@@ -140,7 +147,6 @@ complete:
 
 ix_token _ix_tokenize_expr(const char *input, size_t *pos, size_t len)
 {
-	errno = 0;
 	
 	// loop through all the operators
 	(*pos)++;
@@ -192,6 +198,7 @@ ix_tokens _ix_tokenize(const char *input)
 		
 		// use an expression
 		case '\\':
+			errno = 0;
 			ix_tokens_append(&tokens, _ix_tokenize_expr(input, &idx, max_chars));
 			if (errno != 0)
 			{
@@ -211,6 +218,23 @@ ix_tokens _ix_tokenize(const char *input)
 	return tokens;
 }
 
-// 
+// create an irregex
+irregex irregex_from(const char *input)
+{
+	char *chars = strdup(input);
+	
+	ix_tokens tokens = _ix_tokenize(chars);
+	ix_tokens_destroy(&tokens);
+	
+	return (irregex){
+		.source = chars
+	};
+}
+
+// destroy an irregex instance
+void irregex_destroy(irregex *irx)
+{
+	free(irx->source);
+}
 
 #endif // IRREGEX_IMPLEMENTATION
