@@ -89,10 +89,22 @@ typedef struct {
 DA_HEADERS(ix_token, ix_tokens)
 
 // actually compile regex
+
+// tokenize a single literal from the input.
+// backend
 ix_token _ix_tokenize_literal(const char *input, size_t *pos, size_t len);
+
+// tokenize a single expression from the input.
+// backend
 ix_token _ix_tokenize_expr(const char *input, size_t *pos, size_t len);
+
+// tokenize the whole thing into a dynamic array.
 ix_tokens _ix_tokenize(const char *input);
+
+// compile a new irregex expression
 irregex irregex_from(const char *input);
+
+// destroy your irregex expression
 void irregex_destroy(irregex *irx);
 
 #endif // IRREGEX_H
